@@ -93,6 +93,7 @@ def conv_relu(bottom, ks, nout, stride=1, pad=0, group=1,
     engine = {}
     if train and not args.cudnn:
         engine.update(engine=P.Pooling.CAFFE)
+
     conv = L.Convolution(bottom, kernel_size=ks, stride=stride,
                          num_output=nout, pad=pad, group=group, param=param,
                          weight_filler=weight_filler, bias_filler=bias_filler,
@@ -255,6 +256,7 @@ def miniplaces_solver(train_net_path, test_net_path=None):
 
 def train_net(with_val_net=False):
     train_net_file = miniplaces_net(get_split('train'), train=True)
+    print train_net_file
     # Set with_val_net=True to test during training.
     # Environment variable GLOG_minloglevel should be set to 0 to display
     # Caffe output in this case; otherwise, the test result will not be
@@ -279,6 +281,7 @@ def train_net(with_val_net=False):
     # We could just call `solver.solve()` rather than `step()`ing in a loop.
     # (If we hadn't set GLOG_minloglevel = 3 at the top of this file, Caffe
     # would display loss/accuracy information during training.)
+
     previous_time = None
     for iteration in xrange(args.iters):
         solver.step(1)
