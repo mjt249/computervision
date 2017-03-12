@@ -157,6 +157,47 @@ def minialexnet(data, labels=None, train=False, param=learned_param,
         n.ignored_label = labels
         n.silence_label = L.Silence(n.ignored_label, ntop=0)
     return to_tempfile(str(n.to_proto()))
+
+def minialexnet(data, labels=None, train=False, param=learned_param,
+                num_classes=100, with_labels=True):
+    """
+    Returns a protobuf text file specifying a variant of AlexNet, following the
+    original specification (<caffe>/models/bvlc_alexnet/train_val.prototxt).
+    The changes with respect to the original AlexNet are:
+        - LRN (local response normalization) layers are not included
+        - The Fully Connected (FC) layers (fc6 and fc7) have smaller dimensions
+          due to the lower resolution of mini-places images (128x128) compared
+          with ImageNet images (usually resized to 256x256)
+    """
+    n = caffe.NetSpec()
+    n.data = data
+    conv_kwargs = dict(param=param, train=train)
+    n.conv1, n.relu1 = conv_relu(n.data, 7, 96, stride=2, **conv_kwargs)
+    n.pool1 = max_pool(n.relu1, 3, stride=2, train=train)
+    n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, stride=2, pad=2, group=2, **conv_kwargs)
+    n.pool2 = max_pool(n.relu2, 3, stride=2, train=train)
+    n.conv3, n.relu3 = conv_relu(n.pool2, 3, 384, pad=1, **conv_kwargs)
+    n.conv4, n.relu4 = conv_relu(n.relu3, 3, 384, pad=1, group=2, **conv_kwargs)
+    n.conv5, n.relu5 = conv_relu(n.relu4, 3, 256, pad=1, group=2, **conv_kwargs)
+    n.pool5 = max_pool(n.relu5, 3, stride=2, train=train)
+    n.fc6, n.relu6 = fc_relu(n.pool5, 1024, param=param)
+    n.drop6 = L.Dropout(n.relu6, in_place=True)
+    n.fc7, n.relu7 = fc_relu(n.drop6, 1024, param=param)
+    n.drop7 = L.Dropout(n.relu7, in_place=True)
+    preds = n.fc8 = L.InnerProduct(n.drop7, num_output=num_classes, param=param)
+    if not train:
+        # Compute the per-label probabilities at test/inference time.
+        preds = n.probs = L.Softmax(n.fc8)
+    if with_labels:
+        n.label = labels
+        n.loss = L.SoftmaxWithLoss(n.fc8, n.label)
+        n.accuracy_at_1 = L.Accuracy(preds, n.label)
+        n.accuracy_at_5 = L.Accuracy(preds, n.label,
+                                     accuracy_param=dict(top_k=5))
+    else:
+        n.ignored_label = labels
+        n.silence_label = L.Silence(n.ignored_label, ntop=0)
+    return to_tempfile(str(n.to_proto()))
 def vgg_lowmem(data, labels=None, train=False, param=learned_param,
                 num_classes=100, with_labels=True):
     """
@@ -168,7 +209,8 @@ def vgg_lowmem(data, labels=None, train=False, param=learned_param,
     n = caffe.NetSpec()
     n.data = data
     conv_kwargs = dict(param=param, train=train)
-    n.conv1_1, n.relu1_1 = conv_relu(n.data, 11, 64, stride=4, pad=1, **conv_kwargs)
+    n.conv1_1, n.relu1_1 = conv_relu(n.data, 3, 64, stride=1, pad=1, **conv_kwargs)
+    n.conv1_1, n.relu1_1 = conv_relu(n.data, 3, 64, stride=1, pad=1, **conv_kwargs)
     n.pool1 = max_pool(n.relu1_1, 3, stride=2, train=train)
     n.conv2, n.relu2 = conv_relu(n.pool1, 5, 256, pad=2, group=2, **conv_kwargs)
     n.pool2 = max_pool(n.relu2, 3, stride=2, train=train)
@@ -334,7 +376,7 @@ def miniplaces_net(source, train=False, with_labels=True):
     places_data, places_labels = L.ImageData(transform_param=transform_param,
         source=source, root_folder=args.image_root, shuffle=train,
         batch_size=batch_size, ntop=2)
-    return vgg_lowmem(data=places_data, labels=places_labels, train=train,
+    return minialexnet(data=places_data, labels=places_labels, train=train,
                        with_labels=with_labels)
 
 def snapshot_prefix():
